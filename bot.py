@@ -1,6 +1,12 @@
 import json
 import sqlite3
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import (
+    Update,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    ReplyKeyboardMarkup,
+    KeyboardButton,
+)
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
@@ -13,8 +19,14 @@ from telegram.ext import (
 import requests
 
 LLAMA_API_URL = "http://localhost:11434/api/generate"
-API_TOKEN = "Token"  # get it from @BotFather
-ALLOWED_IDS = [000, 111]  # allowed user ids
+API_TOKEN = "Token"
+ALLOWED_IDS = [000, 111]
+
+
+model_button = KeyboardButton("⚙️ Сменить модель")
+help_button = KeyboardButton("❓ Помощь")
+keyboard = [[model_button, help_button]]
+reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 model_map = {
     "1": "llama3",
@@ -46,6 +58,13 @@ def get_default_model(user_id):
 async def generate_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     model = get_default_model(update.effective_user.id)
     print(update)
+    if update.message.text == "⚙️ Сменить модель":
+        await set_model(update, context)
+        return
+    elif update.message.text == "❓ Помощь":
+
+        await update.message.reply_text("Тут будет какая-нибудь справка")
+        return
     prompt = update.message.text.replace("/promt", "").strip()
     if not prompt:
         await update.message.reply_text("Пожалуйста, введите запрос после /promt")
@@ -59,7 +78,9 @@ async def generate_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             response_json = json.loads(line)
             if response_json["done"]:
                 full_response += response_json["response"]
-                await update.message.reply_text(full_response)
+                await update.message.reply_text(
+                    full_response, reply_markup=reply_markup, parse_mode="Markdown"
+                )
                 break
             else:
                 full_response += response_json["response"]
@@ -72,18 +93,38 @@ async def unauthorized_user(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
 
 async def set_model(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    current_model = get_default_model(update.effective_user.id)
+
     keyboard = [
         [
-            InlineKeyboardButton("Meta Llama 3 - 8B", callback_data="1"),
-            InlineKeyboardButton("Mistral - 7B", callback_data="2"),
+            InlineKeyboardButton(
+                f"Meta Llama 3 - 8B {'✅' if current_model == 'llama3' else ''}",
+                callback_data="1",
+            ),
+            InlineKeyboardButton(
+                f"Mistral - 7B {'✅' if current_model == 'mistral' else ''}",
+                callback_data="2",
+            ),
         ],
         [
-            InlineKeyboardButton("Gemma - 9B", callback_data="3"),
-            InlineKeyboardButton("Mixtral - 8x7B", callback_data="4"),
+            InlineKeyboardButton(
+                f"Gemma - 9B {'✅' if current_model == 'gemma' else ''}",
+                callback_data="3",
+            ),
+            InlineKeyboardButton(
+                f"Mixtral - 8x7B {'✅' if current_model == 'mixtral' else ''}",
+                callback_data="4",
+            ),
         ],
         [
-            InlineKeyboardButton("Dolphin-Mixtral - 8x7B", callback_data="5"),
-            InlineKeyboardButton("Dolphin-Llama3 - 8B", callback_data="6"),
+            InlineKeyboardButton(
+                f"Dolphin-Mixtral - 8x7B {'✅' if current_model == 'dolphin-mixtral' else ''}",
+                callback_data="5",
+            ),
+            InlineKeyboardButton(
+                f"Dolphin-Llama3 - 8B {'✅' if current_model == 'dolphin-llama3' else ''}",
+                callback_data="6",
+            ),
         ],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -113,11 +154,6 @@ async def choose_model(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
 
 
 app = ApplicationBuilder().token(API_TOKEN).build()
-
-
-app.add_handler(
-    CommandHandler("setmodel", set_model, filters=filters.User(user_id=ALLOWED_IDS))
-)
 
 
 app.add_handler(CallbackQueryHandler(choose_model, pattern=r"^[1-6]$"))
