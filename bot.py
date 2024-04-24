@@ -1,34 +1,25 @@
 import json
-import logging
 from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    ContextTypes,
+    MessageHandler,
+    filters,
+)
 import requests
 
 LLAMA_API_URL = "http://localhost:11434/api/generate"
-API_TOKEN = "Token here"  # get it from @BotFather
-ALLOWED_IDS = [0000, 0000]  # allowed user ids
-
-logging.basicConfig(
-    filename="update_log.txt",
-    level=logging.WARNING,
-    format="%(asctime)s - %(levelname)s - %(message)s",
-)
+API_TOKEN = "Token"  # get it from @BotFather
+ALLOWED_IDS = [000, 1234]  # allowed user ids
 
 
 async def generate_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    logging.info(update)
-    # Uncomment the following lines if you want to restrict access to specific users
-    # id = update.effective_user.id
-    # if id not in ALLOWED_IDS:
-    #   await update.message.reply_text(
-    #        "Access denied. You do not have permission to use this bot."
-    #   )
-    #   return
+    # print(update)
     prompt = update.message.text.replace("/promt", "").strip()
     if not prompt:
         await update.message.reply_text("Please provide a prompt after /promt")
         return
-
     payload = {
         "model": "llama3",  # choose your model
         "prompt": prompt,
@@ -41,12 +32,36 @@ async def generate_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             response_json = json.loads(line)
             if response_json["done"]:
                 full_response += response_json["response"]
-                await update.message.reply_text(full_response)
+                await update.message.reply_text(full_response, parse_mode="Markdown")
                 break
             else:
                 full_response += response_json["response"]
 
 
+async def unauthorized_user(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await update.message.reply_text(
+        "Access denied. You do not have permission to use this bot."
+    )
+
+
 app = ApplicationBuilder().token(API_TOKEN).build()
-app.add_handler(CommandHandler("promt", generate_text))
+
+app.add_handler(
+    MessageHandler(
+        filters=filters.ALL
+        & filters.ChatType.PRIVATE
+        & filters.User(user_id=ALLOWED_IDS),
+        callback=generate_text,
+    )
+)
+app.add_handler(
+    CommandHandler("promt", generate_text, filters=filters.User(user_id=ALLOWED_IDS))
+)
+
+app.add_handler(
+    MessageHandler(
+        # Uncomment line below to filter out unauthorized users
+        # filters=~filters.User(user_id=ALLOWED_IDS), callback=unauthorized_user
+    )
+)
 app.run_polling()
