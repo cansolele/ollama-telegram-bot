@@ -17,10 +17,12 @@ from telegram.ext import (
     filters,
 )
 import requests
+import re
+import base64
 
 LLAMA_API_URL = "http://localhost:11434/api/generate"
-API_TOKEN = "Token"
-ALLOWED_IDS = [000, 111]
+API_TOKEN = "TOKEN"
+ALLOWED_IDS = [000, 000]
 
 
 model_button = KeyboardButton("⚙️ Сменить модель")
@@ -55,22 +57,56 @@ def get_default_model(user_id):
     return result[0] if result else "llama3"
 
 
+def md_autofixer(text: str) -> str:
+    escape_chars = r"_*[]()~>#+-=|{}.!"
+    return "".join("\\" + char if char in escape_chars else char for char in text)
+
+
 async def generate_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     model = get_default_model(update.effective_user.id)
     print(update)
+
     if update.message.text == "⚙️ Сменить модель":
         await set_model(update, context)
         return
     elif update.message.text == "❓ Помощь":
-
         await update.message.reply_text("Тут будет какая-нибудь справка")
         return
-    prompt = update.message.text.replace("/promt", "").strip()
-    if not prompt:
-        await update.message.reply_text("Пожалуйста, введите запрос после /promt")
+
+    if update.message.photo:
+
+        photo = update.message.photo[-1]
+
+        photo_file = await photo.get_file()
+
+        photo_data = await photo_file.download_as_bytearray()
+
+        base64_encoded_image = base64.b64encode(photo_data).decode("utf-8")
+
+        payload = {
+            "model": "llava:34b",
+            "prompt": "What is in this picture?",
+            "images": [base64_encoded_image],
+        }
+
+    elif update.message.video or update.message.animation:
+        await update.message.reply_text(
+            "Извините, обработка видео и GIF пока не поддерживается."
+        )
         return
 
-    payload = {"model": model, "prompt": prompt}
+    else:
+        if update.message.sticker:
+            prompt = update.message.sticker.emoji
+        else:
+            prompt = update.message.text.replace("/promt", "").strip()
+
+        if not prompt:
+            await update.message.reply_text("Пожалуйста, введите запрос после /promt")
+            return
+
+        payload = {"model": model, "prompt": prompt}
+
     response = requests.post(LLAMA_API_URL, json=payload, stream=True)
     full_response = ""
     for line in response.iter_lines():
@@ -79,7 +115,9 @@ async def generate_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             if response_json["done"]:
                 full_response += response_json["response"]
                 await update.message.reply_text(
-                    full_response, reply_markup=reply_markup, parse_mode="Markdown"
+                    md_autofixer(full_response),
+                    reply_markup=reply_markup,
+                    parse_mode="MarkdownV2",
                 )
                 break
             else:
