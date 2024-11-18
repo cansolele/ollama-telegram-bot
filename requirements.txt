@@ -1,0 +1,6 @@
+python-telegram-bot[job-queue]
+aiohttp
+python-dotenv
+sqlite3-api
+tenacity
+structlog
